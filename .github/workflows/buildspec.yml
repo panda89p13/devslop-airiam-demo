@@ -1,0 +1,101 @@
+name: Deploy Demo Lambdas
+on:
+  push:
+    branches:
+      - master
+jobs:
+  airiam-pre:
+    name: Generate current IAM terraform, pre-deploy.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.7
+    - name: Generate terraform with AirIAM
+      run: |
+        pip3 install -U pip setuptools 
+        pip3 install airiam
+        airiam terraform --no-cache --without-import -l 30 -d preterraform 
+        tar -czvf pre-terraform.tgz preterraform
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    - name: Upload resultant terraform
+      uses: actions/upload-artifact@v2
+      with:
+        name: pre-terraform
+        path: pre-terraform.tgz 
+  deploy-dev:
+    needs: airiam-pre
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '10.x'
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+    - name: Install Serverless Framework
+      run: npm install -g serverless
+    - name: Install NPM dependencies
+      run: |
+        npm install
+        npm install serverless-python-requirements
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-2
+    - name: Deploy sls functions and resources
+      run: sls deploy -s dev
+  airiam-post:
+      needs: deploy-dev
+      name: Generate current IAM terraform, pre-deploy.
+      runs-on: ubuntu-latest
+      steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-python@v1
+        with:
+          python-version: 3.7
+      - name: Generate terraform with AirIAM
+        run: |
+          pip3 install -U pip setuptools 
+          pip install airiam
+          airiam terraform --no-cache --without-import -l 30 -d postterraform 
+          tar -czvf post-terraform.tgz postterraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Upload resultant terraform
+        uses: actions/upload-artifact@v2
+        with:
+          name: post-terraform
+          path: post-terraform.tgz 
+  airiam-diff:
+      needs: airiam-post
+      name: show IAM differences in Terraform
+      runs-on: ubuntu-latest
+      steps:
+      - name: Download pre-deploy terraform
+        uses: actions/download-artifact@v2
+        with:
+          name: pre-terraform
+      - name: Download post-deploy terraform
+        uses: actions/download-artifact@v2
+        with:
+          name: post-terraform     
+      - shell: bash
+        run: |
+          tar -xzvf pre-terraform.tgz 
+          tar -xzvf post-terraform.tgz 
+          diff ./preterraform ./postterraform   
+      - name: Run Checkov against latest terraform
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.8
+      - run: |
+          pip install checkov
+          checkov -d ./postterraform
