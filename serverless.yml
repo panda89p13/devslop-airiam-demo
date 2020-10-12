@@ -9,7 +9,7 @@ provider:
   memorySize: 128
   environment:
   custom:
-    s3-bucket: "devslop-bucket"
+    s3-bucket: "devslop-testdemo-bucket"
 plugins:
   - serverless-python-requirements
 package:
