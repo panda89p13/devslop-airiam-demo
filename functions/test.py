@@ -7,7 +7,7 @@ def test(event, context):
             "deviceLastIp": "192.168.0.193",
 	    "welcomeToThe": "Function",
 	    "weveGotFunAnd": "games",
-            "hello": "world",
+            "hello": "Testworld",
 	    "some": "important-data"
         },
         {
